@@ -5,17 +5,12 @@ import cv2
 import numpy as np
 import torch
 from PIL import Image
-from matplotlib import pyplot as plt
 from torchvision import transforms
 from torchvision.models.detection import ssdlite320_mobilenet_v3_large
 
 
 class ModelName(enum.IntEnum):
     ssd_lite = 1
-
-
-def to_numpy(values: torch.Tensor) -> np.ndarray:
-    return values.detach().cpu().numpy()
 
 
 class Detector:
@@ -78,16 +73,24 @@ class Detector:
         return boxes
 
     def get_person_boxes(self, img: Image) -> (List[list], List[float]):
+        # prepare input for net
         input_img = self.preprocess(img)
         input_img = input_img.unsqueeze(0)
         input_img = input_img.to(self.device)
 
+        # predict
         predictions = self.model(input_img)
+
+        # parse prediction
         predictions = self._filter_predictions(predictions[0])
         boxes, scores = predictions['boxes'], predictions['scores']
         boxes, scores = to_numpy(boxes), to_numpy(scores)
         boxes = self._resize_boxes(boxes, self.input_wh, self.net_dim)
         return boxes, scores
+
+
+def to_numpy(values: torch.Tensor) -> np.ndarray:
+    return values.detach().cpu().numpy()
 
 
 def draw_boxes(img: Image, boxes: list, color: tuple = (20, 20, 180)) -> np.ndarray:
@@ -98,14 +101,18 @@ def draw_boxes(img: Image, boxes: list, color: tuple = (20, 20, 180)) -> np.ndar
     return img
 
 
-if __name__ == '__main__':
-    p = '/home/cortica/Documents/my/git_personal/data/ml6/frames_png/00001.png'
-    img_ = Image.open(p)
+def debug_detector():
+    from matplotlib import pyplot as plt
+
+    sample_img_path = '../data/00001.jpg'
+    img = Image.open(sample_img_path)
 
     det = Detector(ModelName.ssd_lite, .15, .5, (1920, 1080))
-    boxes_, scores_ = det.get_person_boxes(img_)
-    img_tensor_ = det.preprocess(img_)
-    img_draw = draw_boxes(img_, boxes_)
+    boxes, scores = det.get_person_boxes(img)
+    img_draw = draw_boxes(img, boxes)
     plt.imshow(img_draw)
     plt.show()
-    a = 10
+
+
+if __name__ == '__main__':
+    debug_detector()

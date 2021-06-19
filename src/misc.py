@@ -1,11 +1,8 @@
 import logging
 import os
-from collections import namedtuple
-
-# Box = namedtuple('Box', 'left top right bottom')
 
 
-def get_logger(log_path: str = None, level=logging.DEBUG) -> logging.Logger:
+def get_logger(log_path: str = None, level=logging.INFO) -> logging.Logger:
     global LOGGER
     for handler in logging.root.handlers[:]:
         logging.root.removeHandler(handler)

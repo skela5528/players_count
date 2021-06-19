@@ -4,16 +4,18 @@ from typing import Optional, List
 import cv2
 import numpy as np
 import torch
-import torchvision.transforms.functional as F
 from PIL import Image
 from matplotlib import pyplot as plt
 from torchvision import transforms
 from torchvision.models.detection import ssdlite320_mobilenet_v3_large
-from torchvision.utils import draw_bounding_boxes
 
 
 class ModelName(enum.IntEnum):
     ssd_lite = 1
+
+
+def to_numpy(values: torch.Tensor) -> np.ndarray:
+    return values.detach().cpu().numpy()
 
 
 class Detector:
@@ -57,9 +59,8 @@ class Detector:
         return result
 
     @staticmethod
-    def _resize_boxes(boxes: torch.Tensor, origin_wh: tuple, net_dim: int) -> List[List[float]]:
+    def _resize_boxes(boxes: np.ndarray, origin_wh: tuple, net_dim: int) -> List[list]:
         # resize center crop
-        boxes = boxes.detach().cpu().numpy()
         width, height = origin_wh
         x_shift = (width - height) / 2
         scale_factor = height / net_dim
@@ -67,21 +68,26 @@ class Detector:
         # resize x
         boxes[:, 0] = boxes[:, 0] * scale_factor + x_shift
         boxes[:, 2] = boxes[:, 2] * scale_factor + x_shift
+
         # resize y
         boxes[:, 1] = boxes[:, 1] * scale_factor
         boxes[:, 3] = boxes[:, 3] * scale_factor
-        # convert to list of Box
+
+        # to list of lists
+        boxes = boxes.tolist()  # type: List[List[float, float, float, float]]
         return boxes
 
-    def get_person_boxes(self, img: Image) -> dict:
+    def get_person_boxes(self, img: Image) -> (List[list], List[float]):
         input_img = self.preprocess(img)
         input_img = input_img.unsqueeze(0)
         input_img = input_img.to(self.device)
 
         predictions = self.model(input_img)
         predictions = self._filter_predictions(predictions[0])
-        print(predictions)
-        return predictions
+        boxes, scores = predictions['boxes'], predictions['scores']
+        boxes, scores = to_numpy(boxes), to_numpy(scores)
+        boxes = self._resize_boxes(boxes, self.input_wh, self.net_dim)
+        return boxes, scores
 
 
 def draw_boxes(img: Image, boxes: list, color: tuple = (20, 20, 180)) -> np.ndarray:
@@ -92,42 +98,13 @@ def draw_boxes(img: Image, boxes: list, color: tuple = (20, 20, 180)) -> np.ndar
     return img
 
 
-def show(imgs):
-    if not isinstance(imgs, list):
-        imgs = [imgs]
-    fix, axs = plt.subplots(ncols=len(imgs), squeeze=False)
-    for i, img in enumerate(imgs):
-        img = img.detach()
-        img = F.to_pil_image(img)
-        axs[0, i].imshow(np.asarray(img))
-        axs[0, i].set(xticklabels=[], yticklabels=[], xticks=[], yticks=[])
-    plt.show()
-
-
-def vis_frame(img_tensor: torch.Tensor, boxes, scores):
-    # min_score = .8
-    # nms_iou_threshold = .9
-    # indexes_nms = torchvision.ops.nms(predictions[0]['boxes'], predictions[0]['scores'], iou_threshold=nms_iou_threshold)
-
-    score_strs = [str(round(s, 2)) for s in scores.detach().cpu().numpy()]
-    img_vis = img_tensor * 255
-    img_vis = img_vis.to(torch.uint8)
-    img_draw = draw_bounding_boxes(img_vis, boxes, labels=score_strs)
-    show(img_draw)
-
-
 if __name__ == '__main__':
     p = '/home/cortica/Documents/my/git_personal/data/ml6/frames_png/00001.png'
     img_ = Image.open(p)
 
     det = Detector(ModelName.ssd_lite, .15, .5, (1920, 1080))
-    predictions_ = det.get_person_boxes(img_)
-
+    boxes_, scores_ = det.get_person_boxes(img_)
     img_tensor_ = det.preprocess(img_)
-    # vis_frame(img_tensor_, predictions_['boxes'], predictions_['scores'])
-
-    # as
-    boxes_ = det._resize_boxes(predictions_['boxes'], det.input_wh, det.net_dim)
     img_draw = draw_boxes(img_, boxes_)
     plt.imshow(img_draw)
     plt.show()

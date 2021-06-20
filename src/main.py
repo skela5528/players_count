@@ -8,10 +8,10 @@ import cv2
 import numpy as np
 from PIL import Image
 
-from src.config_parser import get_config
-from src.detector import Detector, ModelName
-from src.misc import LOGGER, draw_boxes
-from src.player_counter import PlayerCounter, TeamClass
+from config_parser import get_config
+from detector import Detector, ModelName
+from misc import LOGGER, draw_boxes
+from player_counter import PlayerCounter, TeamClass
 
 
 class Runner:

@@ -48,7 +48,7 @@ class PlayerCounter:
         dist_b = self._get_distances_to_descriptor(features, self.b_descriptor)
         dist_ref = self._get_distances_to_descriptor(features, self.referee_descriptor)
 
-        team_predictions = np.zeros(len(features))  # 0-unknown, 1-a, 2-b, 10-referee
+        team_predictions = np.zeros(len(features), dtype=int)  # 0-unknown, 1-a, 2-b, 10-referee
         for ind in range(len(features)):
             da = dist_a[ind]
             db = dist_b[ind]
@@ -86,7 +86,7 @@ def calculate_team_descriptor(same_team_features: List[np.ndarray]) -> np.ndarra
 def debug_player_counter():
     from matplotlib import pyplot as plt
 
-    sample_img_path = '../data/00001.jpg'
+    sample_img_path = '../data/input_frames/00001.jpg'
     img = np.array(Image.open(sample_img_path))
 
     boxes = [[1295.2, 682.3, 1442.2, 997.2], [833.4, 406.3, 925.3, 701.0]]

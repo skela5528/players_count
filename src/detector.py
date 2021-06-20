@@ -147,7 +147,7 @@ def debug_detector():
     from matplotlib import pyplot as plt
     from misc import draw_boxes
 
-    sample_img_path = '../data/00001.jpg'
+    sample_img_path = '../data/input_frames/00001.jpg'
     img = Image.open(sample_img_path)
 
     det = Detector(ModelName.ssd_lite, .15, .5, (1920, 1080))

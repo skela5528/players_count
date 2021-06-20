@@ -1,7 +1,6 @@
 import enum
 from typing import Optional, List
 
-import cv2
 import numpy as np
 import torch
 from PIL import Image
@@ -100,7 +99,7 @@ class Detector:
         boxes, scores = self._resize_boxes_five_crops(predictions, self.input_wh, self.net_dim)
 
         # nms
-        keep_ids = nms(boxes, scores, self.nms_thresh)
+        keep_ids = nms(boxes, scores, self.nms_thresh, min_mode=True)
         boxes, scores = [boxes[i] for i in keep_ids], [scores[i] for i in keep_ids]
         return boxes, scores
 
@@ -109,7 +108,7 @@ def to_numpy(values: torch.Tensor) -> np.ndarray:
     return values.detach().cpu().numpy()
 
 
-def nms(boxes: List[list], scores: List[float], overlap_threshold: float) -> List[int]:
+def nms(boxes: List[list], scores: List[float], overlap_threshold: float, min_mode: bool = False) -> List[int]:
     """Not Maximum Suppression."""
 
     scores = np.array(scores)
@@ -133,26 +132,18 @@ def nms(boxes: List[list], scores: List[float], overlap_threshold: float) -> Lis
         h = np.maximum(0.0, yy2 - yy1 + 1)
         inter = w * h
 
-        ovr = inter / (areas[order[0]] + areas[order[1:]] - inter)
+        if min_mode:
+            ovr = inter / np.minimum(areas[order[0]], areas[order[1:]])
+        else:
+            ovr = inter / (areas[order[0]] + areas[order[1:]] - inter)
         inds = np.where(ovr <= overlap_threshold)[0]
         order = order[inds + 1]
     return keep_indices
 
 
-def draw_boxes(img: Image, boxes: list, labels: Optional[List[str]] = None, color: tuple = (20, 20, 180), ) -> np.ndarray:
-    img = np.array(img)
-    for ind, box in enumerate(boxes):
-        left, top, right, bottom = [int(round(val)) for val in box]
-        cv2.rectangle(img, (left, top), (right, bottom), color, 2)
-
-        if labels is not None:
-            text_org = (left + 6, top + 16)
-            cv2.putText(img, labels[ind], text_org, cv2.FONT_HERSHEY_DUPLEX, .65, color, 1)
-    return img
-
-
 def debug_detector():
     from matplotlib import pyplot as plt
+    from misc import draw_boxes
 
     sample_img_path = '../data/00001.jpg'
     img = Image.open(sample_img_path)

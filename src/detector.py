@@ -20,14 +20,14 @@ class Detector:
         self.net_dim: int = 320
 
         self.model = self._load_model(model_name, score_thresh, nms_thresh, device)
-        self.preprocess = self._get_img_transforms(input_wh[1], self.net_dim)
+        self.preprocess = self._get_img_transforms(self.net_dim)
 
     @staticmethod
-    def _get_img_transforms(input_height: int, net_in_size: int) -> transforms.Compose:
+    def _get_img_transforms(net_in_size: int, crop_size: int = 960) -> transforms.Compose:
         img_transforms = transforms.Compose([
-            transforms.CenterCrop(input_height),
+            transforms.FiveCrop(crop_size),
+            transforms.Lambda(lambda crops: torch.stack([transforms.ToTensor()(crop) for crop in crops])),
             transforms.Resize(size=net_in_size, interpolation=transforms.InterpolationMode.BICUBIC),
-            transforms.ToTensor()
         ])
         return img_transforms
 
@@ -45,7 +45,8 @@ class Detector:
         return model
 
     @staticmethod
-    def _filter_predictions(predictions: dict, white_list_labels: list = [1]) -> Optional[dict]:
+    def _filter_predictions(predictions: dict, white_list_labels: tuple = (1,)) -> Optional[dict]:
+        white_list_labels = list(white_list_labels)
         indexes_keep = [i for i, label in enumerate(predictions['labels']) if label in white_list_labels]
         indexes_keep = torch.tensor(indexes_keep)
         result = None
@@ -54,38 +55,48 @@ class Detector:
         return result
 
     @staticmethod
-    def _resize_boxes(boxes: np.ndarray, origin_wh: tuple, net_dim: int) -> List[list]:
-        # resize center crop
+    def _resize_boxes_five_crops(predictions: List[dict], origin_wh: tuple, net_dim: int, crop_size: int = 960):
+        # tl, tr, bl, br, center - crops order
+
+        # calculate shifts
         width, height = origin_wh
-        x_shift = (width - height) / 2
-        scale_factor = height / net_dim
+        scale_factor = crop_size / net_dim
+        dx = width - crop_size
+        dy = height - crop_size
+        x_shifts = (0, dx, 0, dx, dx / 2)
+        y_shifts = (0, 0, dy, dy, dy / 2)
 
-        # resize x
-        boxes[:, 0] = boxes[:, 0] * scale_factor + x_shift
-        boxes[:, 2] = boxes[:, 2] * scale_factor + x_shift
+        # resize each crop
+        boxes, scores = [], []
+        for ind, crop_pred in enumerate(predictions):
+            crop_boxes = to_numpy(crop_pred['boxes'])
+            crop_scores = to_numpy(crop_pred['scores'])
 
-        # resize y
-        boxes[:, 1] = boxes[:, 1] * scale_factor
-        boxes[:, 3] = boxes[:, 3] * scale_factor
+            # resize x inplace
+            crop_boxes[:, 0] = crop_boxes[:, 0] * scale_factor + x_shifts[ind]
+            crop_boxes[:, 2] = crop_boxes[:, 2] * scale_factor + x_shifts[ind]
 
-        # to list of lists
-        boxes = boxes.tolist()  # type: List[List[float, float, float, float]]
-        return boxes
+            # resize y inplace
+            crop_boxes[:, 1] = crop_boxes[:, 1] * scale_factor + y_shifts[ind]
+            crop_boxes[:, 3] = crop_boxes[:, 3] * scale_factor + y_shifts[ind]
+
+            # to list of lists
+            crop_boxes = crop_boxes.tolist()  # type: List[List[float, float, float, float]]
+            boxes.extend(crop_boxes)
+            scores.extend(crop_scores)
+        return boxes, scores
 
     def get_person_boxes(self, img: Image) -> (List[list], List[float]):
         # prepare input for net
         input_img = self.preprocess(img)
-        input_img = input_img.unsqueeze(0)
         input_img = input_img.to(self.device)
 
         # predict
         predictions = self.model(input_img)
 
         # parse prediction
-        predictions = self._filter_predictions(predictions[0])
-        boxes, scores = predictions['boxes'], predictions['scores']
-        boxes, scores = to_numpy(boxes), to_numpy(scores)
-        boxes = self._resize_boxes(boxes, self.input_wh, self.net_dim)
+        predictions = [self._filter_predictions(p) for p in predictions]
+        boxes, scores = self._resize_boxes_five_crops(predictions, self.input_wh, self.net_dim)
         return boxes, scores
 
 
@@ -93,11 +104,15 @@ def to_numpy(values: torch.Tensor) -> np.ndarray:
     return values.detach().cpu().numpy()
 
 
-def draw_boxes(img: Image, boxes: list, color: tuple = (20, 20, 180)) -> np.ndarray:
+def draw_boxes(img: Image, boxes: list, labels: Optional[List[str]] = None, color: tuple = (20, 20, 180), ) -> np.ndarray:
     img = np.array(img)
-    for box in boxes:
+    for ind, box in enumerate(boxes):
         left, top, right, bottom = [int(round(val)) for val in box]
         cv2.rectangle(img, (left, top), (right, bottom), color, 2)
+
+        if labels is not None:
+            text_org = (left + 6, top + 16)
+            cv2.putText(img, labels[ind], text_org, cv2.FONT_HERSHEY_DUPLEX, .65, color, 1)
     return img
 
 

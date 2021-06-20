@@ -69,6 +69,8 @@ class Detector:
         # resize each crop
         boxes, scores = [], []
         for ind, crop_pred in enumerate(predictions):
+            if crop_pred is None:
+                continue
             crop_boxes = to_numpy(crop_pred['boxes'])
             crop_scores = to_numpy(crop_pred['scores'])
 

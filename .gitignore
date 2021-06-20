@@ -5,7 +5,7 @@ __pycache__/
 
 # Jupyter Notebook
 .ipynb_checkpoints
-/notebooks/.ipynb_checkpoints
+/clustering_notebook/.ipynb_checkpoints
 
 # IPython
 profile_default/

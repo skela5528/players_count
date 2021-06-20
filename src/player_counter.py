@@ -73,7 +73,7 @@ class PlayerCounter:
     def process_frame(self, img: np.ndarray, boxes: List[list]):
         crops = self.get_crops_from_boxes(img, boxes)
         features = self.get_features_from_crops(crops)
-        team_predictions = self.count_players(features)
+        team_predictions = self.count_players(features) if len(features) else []
         return team_predictions, features
 
 

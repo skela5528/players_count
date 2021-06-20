@@ -6,17 +6,19 @@ import numpy as np
 import torch
 from PIL import Image
 from torchvision import transforms
-from torchvision.models.detection import ssdlite320_mobilenet_v3_large
+from torchvision.models.detection import ssdlite320_mobilenet_v3_large, retinanet_resnet50_fpn
 
 
 class ModelName(enum.IntEnum):
     ssd_lite = 1
+    retina_net = 2
 
 
 class Detector:
     def __init__(self, model_name: ModelName, score_thresh: float, nms_thresh: float, input_wh: tuple, device: str = 'cuda'):
         self.input_wh = input_wh
         self.device = device
+        self.nms_thresh = nms_thresh
         self.net_dim: int = 320
 
         self.model = self._load_model(model_name, score_thresh, nms_thresh, device)
@@ -33,11 +35,10 @@ class Detector:
 
     @staticmethod
     def _load_model(model_name: ModelName, score_thresh: float, nms_thresh: float, device: str) -> torch.nn.Module:
-        model = None
         if model_name == ModelName.ssd_lite:
             model = ssdlite320_mobilenet_v3_large(pretrained=True, pretrained_backbone=True, score_thresh=score_thresh, nms_thresh=nms_thresh)
-        elif ...:
-            ...
+        elif model_name == ModelName.retina_net:
+            model = retinanet_resnet50_fpn(pretrained=True, pretrained_backbone=True, score_thresh=score_thresh, nms_thresh=nms_thresh)
         else:
             raise ValueError
         model.to(device)
@@ -55,7 +56,7 @@ class Detector:
         return result
 
     @staticmethod
-    def _resize_boxes_five_crops(predictions: List[dict], origin_wh: tuple, net_dim: int, crop_size: int = 960):
+    def _resize_boxes_five_crops(predictions: List[dict], origin_wh: tuple, net_dim: int, crop_size: int = 960) -> (List[list], List[float]):
         # tl, tr, bl, br, center - crops order
 
         # calculate shifts
@@ -81,7 +82,7 @@ class Detector:
             crop_boxes[:, 3] = crop_boxes[:, 3] * scale_factor + y_shifts[ind]
 
             # to list of lists
-            crop_boxes = crop_boxes.tolist()  # type: List[List[float, float, float, float]]
+            crop_boxes = crop_boxes.tolist()
             boxes.extend(crop_boxes)
             scores.extend(crop_scores)
         return boxes, scores
@@ -97,11 +98,45 @@ class Detector:
         # parse prediction
         predictions = [self._filter_predictions(p) for p in predictions]
         boxes, scores = self._resize_boxes_five_crops(predictions, self.input_wh, self.net_dim)
+
+        # nms
+        keep_ids = nms(boxes, scores, self.nms_thresh)
+        boxes, scores = [boxes[i] for i in keep_ids], [scores[i] for i in keep_ids]
         return boxes, scores
 
 
 def to_numpy(values: torch.Tensor) -> np.ndarray:
     return values.detach().cpu().numpy()
+
+
+def nms(boxes: List[list], scores: List[float], overlap_threshold: float) -> List[int]:
+    """Not Maximum Suppression."""
+
+    scores = np.array(scores)
+    x1 = np.array([b[0] for b in boxes])
+    y1 = np.array([b[1] for b in boxes])
+    x2 = np.array([b[2] for b in boxes])
+    y2 = np.array([b[3] for b in boxes])
+
+    areas = (x2 - x1 + 1) * (y2 - y1 + 1)
+    order = scores.argsort()[::-1]
+
+    keep_indices = []
+    while order.size > 0:
+        keep_indices.append(order[0])
+        xx1 = np.maximum(x1[order[0]], x1[order[1:]])
+        yy1 = np.maximum(y1[order[0]], y1[order[1:]])
+        xx2 = np.minimum(x2[order[0]], x2[order[1:]])
+        yy2 = np.minimum(y2[order[0]], y2[order[1:]])
+
+        w = np.maximum(0.0, xx2 - xx1 + 1)
+        h = np.maximum(0.0, yy2 - yy1 + 1)
+        inter = w * h
+
+        ovr = inter / (areas[order[0]] + areas[order[1:]] - inter)
+        inds = np.where(ovr <= overlap_threshold)[0]
+        order = order[inds + 1]
+    return keep_indices
 
 
 def draw_boxes(img: Image, boxes: list, labels: Optional[List[str]] = None, color: tuple = (20, 20, 180), ) -> np.ndarray:

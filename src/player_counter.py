@@ -74,7 +74,7 @@ class PlayerCounter:
         crops = self.get_crops_from_boxes(img, boxes)
         features = self.get_features_from_crops(crops)
         team_predictions = self.count_players(features)
-        return team_predictions
+        return team_predictions, features
 
 
 def calculate_team_descriptor(same_team_features: List[np.ndarray]) -> np.ndarray:
